@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { ArrowUpRight, ArrowDownRight, Activity, DollarSign, Layers, Sun, Moon } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, Activity, DollarSign, Layers, Sun, Moon, AlertTriangle } from 'lucide-react';
 import './Dashboard.css';
 
 const formatCurrency = (value) => {
@@ -220,6 +220,10 @@ const Dashboard = () => {
                     </ResponsiveContainer>
                 </div>
             </div>
+            <p className="disclaimer">
+                <AlertTriangle size={14} style={{ marginRight: '6px', verticalAlign: 'middle', display: 'inline-block' }} />
+                Data provided by The Graph subgraphs. Accuracy depends on subgraph indexing status.
+            </p>
         </div>
     );
 };

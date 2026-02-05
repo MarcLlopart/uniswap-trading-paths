@@ -219,8 +219,8 @@ h1 {
 }
 
 .chart-tab.active {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-primary);
+    background: var(--text-primary);
+    color: var(--bg-color);
 }
 
 .chart-legend {
@@ -258,4 +258,12 @@ h1 {
 
 .error {
     color: var(--error);
+}
+
+.disclaimer {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 2rem;
+    opacity: 0.7;
 }
