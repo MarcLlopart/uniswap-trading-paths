@@ -28,7 +28,7 @@ jobs:
         run: npm install
 
       - name: Fetch Uniswap Data
-        run: npm run fetchData
+        run: npm run fetch-data
         env:
           # Inject your subgraph URLs from GitHub Secrets
           V4_SUBGRAPH_URL_BASE: ${{ secrets.V4_SUBGRAPH_URL_BASE }}
