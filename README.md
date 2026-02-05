@@ -501,4 +501,4 @@ npm run dev
 ```
 The dashboard will be available at http://localhost:5173
 
-
+Dashboard can be reached at: https://uniswap-trading-paths.vercel.app/
