@@ -1,0 +1,84 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --bg-color: #0d0e12;
+  --card-bg: rgba(22, 24, 33, 0.6);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --text-primary: #ffffff;
+  --text-secondary: #98a1c0;
+  --accent-primary: #ff007a;
+  /* Uniswap Pink */
+  --accent-secondary: #4c2db3;
+  --success: #27d17f;
+  --error: #ff4d4d;
+
+  --h1-gradient: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+  --badge-gradient: linear-gradient(135deg, #ff007a, #4c2db3);
+  --font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+:root.light-mode {
+  --bg-color: #f5f6fc;
+  --card-bg: rgba(255, 255, 255, 0.7);
+  --card-border: rgba(0, 0, 0, 0.05);
+  /* User requested numbers to be black in light mode */
+  --text-primary: #900059;
+  --text-secondary: #646d85;
+  --accent-primary: #ff007a;
+  --accent-secondary: #6347c9;
+  --h1-gradient: linear-gradient(135deg, #2c2f36 0%, #6347c9 100%);
+  --badge-gradient: linear-gradient(135deg, #f4e2eb, #ebe8f8);
+}
+
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  margin: 0;
+  display: flex;
+  justify-content: center;
+  overflow-x: hidden;
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(255, 0, 122, 0.08), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(76, 45, 179, 0.1), transparent 30%);
+}
+
+#root {
+  width: 100%;
+  max-width: 1200px;
+  padding: 2rem;
+}
+
+.glass-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #fff 0%, #a5b4fc 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

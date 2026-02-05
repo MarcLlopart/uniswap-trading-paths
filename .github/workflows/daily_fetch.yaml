@@ -1,0 +1,48 @@
+name: Daily Uniswap Data Update
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allows you to run this manually from the Actions tab
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    # Grant permission to push changes back to the repo
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Fetch Uniswap Data
+        run: npm run fetchData
+        env:
+          # Inject your subgraph URLs from GitHub Secrets
+          V4_SUBGRAPH_URL_BASE: ${{ secrets.V4_SUBGRAPH_URL_BASE }}
+          V4_SUBGRAPH_URL_MAINNET: ${{ secrets.V4_SUBGRAPH_URL_MAINNET }}
+          V4_SUBGRAPH_URL_BSC: ${{ secrets.V4_SUBGRAPH_URL_BSC }}
+          V4_SUBGRAPH_URL_ARBITRUM: ${{ secrets.V4_SUBGRAPH_URL_ARBITRUM }}
+          V4_SUBGRAPH_URL_POLYGON: ${{ secrets.V4_SUBGRAPH_URL_POLYGON }}
+          V4_SUBGRAPH_URL_AVALANCHE: ${{ secrets.V4_SUBGRAPH_URL_AVALANCHE }}
+          V4_SUBGRAPH_URL_OPTIMISM: ${{ secrets.V4_SUBGRAPH_URL_OPTIMISM }}
+
+      - name: Commit and Push Changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add public/uniswap_unified_data.json
+          git commit -m "chore: daily uniswap data update [skip ci]" || echo "No changes to commit"
+          git push

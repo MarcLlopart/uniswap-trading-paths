@@ -1,0 +1,261 @@
+.dashboard-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+    width: 100%;
+}
+
+.dashboard-header {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 1.5rem;
+}
+
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.logo-area {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.theme-toggle {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    color: var(--text-secondary);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.theme-toggle:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.chain-selector {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    background: var(--card-bg);
+    padding: 6px;
+    border-radius: 16px;
+    border: 1px solid var(--card-border);
+    max-width: 100%;
+}
+
+.chain-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+    white-space: nowrap;
+}
+
+.chain-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.chain-btn.active {
+    background: var(--text-primary);
+    color: var(--bg-color);
+    font-weight: 600;
+}
+
+.uniswap-badge {
+    background: var(--badge-gradient);
+    color: white;
+    padding: 4px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+@media (min-width: 768px) {
+    .dashboard-header {
+        flex-direction: column;
+    }
+}
+
+
+h1 {
+    font-size: 1.8rem;
+    white-space: nowrap;
+    background: var(--h1-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.5rem;
+}
+
+.kpi-card {
+    padding: 1.5rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    transition: all 0.2s ease;
+    border: 1px solid var(--card-border);
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.kpi-card.active-card {
+    border-color: var(--accent-primary);
+    background: linear-gradient(135deg, rgba(255, 0, 122, 0.1), rgba(22, 24, 33, 0.6));
+}
+
+.card-icon-wrapper {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 12px;
+    border-radius: 12px;
+    color: var(--accent-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.card-content h3 {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.card-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.chart-header h2 {
+    color: var(--text-primary);
+}
+
+.card-delta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.card-delta.positive {
+    color: var(--success);
+}
+
+.card-delta.negative {
+    color: var(--error);
+}
+
+.delta-label {
+    color: var(--text-secondary);
+    font-weight: 400;
+    margin-left: 4px;
+}
+
+.chart-section {
+    padding: 2rem;
+    min-height: 400px;
+}
+
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.chart-tabs {
+    display: flex;
+    gap: 1rem;
+    background: rgba(0, 0, 0, 0.2);
+    padding: 4px;
+    border-radius: 12px;
+
+}
+
+.chart-tab {
+    background: transparent;
+    border: none;
+    color: var(--text-secondary);
+    padding: 8px 24px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.chart-tab.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.chart-legend {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+.volume-dot {
+    background-color: var(--accent-primary);
+}
+
+.fees-dot {
+    background-color: var(--accent-secondary);
+}
+
+.loading,
+.error {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 300px;
+    color: var(--text-secondary);
+    font-size: 1.2rem;
+}
+
+.error {
+    color: var(--error);
+}
