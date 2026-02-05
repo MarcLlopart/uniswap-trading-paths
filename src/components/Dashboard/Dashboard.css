@@ -210,7 +210,7 @@ h1 {
 .chart-tab {
     background: transparent;
     border: none;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     padding: 8px 24px;
     border-radius: 8px;
     cursor: pointer;
@@ -228,7 +228,7 @@ h1 {
     align-items: center;
     gap: 8px;
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-weight: 500;
 }
 
@@ -252,7 +252,7 @@ h1 {
     justify-content: center;
     align-items: center;
     height: 300px;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     font-size: 1.2rem;
 }
 

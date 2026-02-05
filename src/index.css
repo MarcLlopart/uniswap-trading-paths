@@ -4,7 +4,7 @@
   --bg-color: #0d0e12;
   --card-bg: rgba(22, 24, 33, 0.6);
   --card-border: rgba(255, 255, 255, 0.08);
-  --text-primary: #ffffff;
+  --text-primary: #ffc8ea;
   --text-secondary: #98a1c0;
   --accent-primary: #ff007a;
   /* Uniswap Pink */
@@ -22,7 +22,7 @@
   --card-bg: rgba(255, 255, 255, 0.7);
   --card-border: rgba(0, 0, 0, 0.05);
   /* User requested numbers to be black in light mode */
-  --text-primary: #900059;
+  --text-primary: #ff13a5;
   --text-secondary: #646d85;
   --accent-primary: #ff007a;
   --accent-secondary: #6347c9;

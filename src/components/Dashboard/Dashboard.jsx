@@ -207,6 +207,7 @@ const Dashboard = () => {
                                 radius={[4, 4, 0, 0]}
                                 barSize={30}
                                 animationDuration={1000}
+
                             >
                                 {chartData.map((entry, index) => (
                                     <Cell
