@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
 import { ArrowUpRight, ArrowDownRight, Activity, DollarSign, Layers, Sun, Moon, AlertTriangle } from 'lucide-react';
 import './Dashboard.css';
 
@@ -99,7 +99,8 @@ const Dashboard = () => {
         const date = new Date(parseInt(year), parseInt(month) - 1, 15);
         return {
             name: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-            value: activeTab === 'Volume' ? item.volume : item.fees,
+            volume: item.volume,  // Keep original values
+            fees: item.fees,      // Keep original values
             originalDate: item.date
         };
     }) : [];
@@ -181,42 +182,64 @@ const Dashboard = () => {
                 </div>
 
                 <div className="chart-wrapper">
-                    <ResponsiveContainer width="100%" height={300} >
+                    <ResponsiveContainer width="100%" height={300}>
                         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
                             <XAxis
                                 dataKey="name"
                                 axisLine={false}
                                 tickLine={false}
-                                tick={{ fill: '#98a1c0', fontSize: 12 }}
+                                tick={{ fill: isDarkMode ? "#17cac6" : "#830057", fontSize: 12 }}
                                 dy={10}
+                                label={{
+                                    value: 'Date',
+                                    position: 'insideBottom',
+                                    offset: -15,
+                                    style: {
+                                        fill: 'var(--text-primary)',
+                                        textAnchor: 'middle'
+                                    }
+                                }}
                             />
                             <YAxis
                                 axisLine={false}
                                 tickLine={false}
                                 tickFormatter={(val) => formatCurrency(val)}
-                                tick={{ fill: '#98a1c0', fontSize: 12 }}
+                                tick={{ fill: isDarkMode ? "#17cac6" : "#830057", fontSize: 12 }}
+                                label={{
+                                    value: activeTab === 'Volume' ? "Volume ($)" : "Fees ($)",
+                                    position: 'insideLeft',
+                                    angle: -90,
+                                    offset: -10,
+                                    style: { fill: 'var(--text-primary)', textAnchor: 'middle' }
+                                }}
                             />
                             <Tooltip
                                 cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
-                                contentStyle={{ backgroundColor: '#161821', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                                contentStyle={{
+                                    backgroundColor: '#161821',
+                                    borderColor: 'rgba(255,255,255,0.1)',
+                                    borderRadius: '8px'
+                                }}
                                 itemStyle={{ color: '#fff' }}
                                 formatter={(value) => [formatFullCurrency(value), activeTab]}
                             />
                             <Bar
-                                dataKey="value"
+                                dataKey={activeTab === 'Volume' ? 'volume' : 'fees'}
+                                name={activeTab === 'Volume' ? 'Volume' : 'Fees'}
                                 radius={[4, 4, 0, 0]}
                                 barSize={30}
                                 animationDuration={1000}
-
-                            >
-                                {chartData.map((entry, index) => (
-                                    <Cell
-                                        key={`cell-${index}`}
-                                        fill={activeTab === 'Volume' ? '#ff007a' : '#4c2db3'}
-                                        fillOpacity={1}
-                                    />
-                                ))}
-                            </Bar>
+                                fill={'var(--accent-primary)'}
+                            />
+                            <Legend
+                                wrapperStyle={{
+                                    paddingTop: '20px'
+                                }}
+                                iconType="line"
+                                formatter={(value) => (
+                                    <span style={{ color: 'var(--text-primary)' }}>{value}</span>
+                                )}
+                            />
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
