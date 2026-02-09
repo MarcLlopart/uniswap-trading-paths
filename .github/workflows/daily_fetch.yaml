@@ -42,7 +42,7 @@ jobs:
           
           # Pool IDs (public addresses - safe to include directly)
           MAINNET_POOL: '0xdce6394339af00981949f5f3baf27e3610c76326a700af57e4b3e3ae4977f78d'
-          UNICHAIN_POOL: '0x3258f413c7a88cda2fa8709a589d221a80f6574f63df5a5b6774485d8acc39d9'
+          UNICHAIN_POOL: '0xbd0f3a7cf4cf5f48ebe850474c8c0012fa5fe893ab811a8b8743a52b83aa8939'
           # BASE_POOL: '0x15f351bf1637b43d70631ba95fb9bbb1ff21761c29b034c1b380aecb922464dd'
           POLYGON_POOL: '0x0babfcba4097bc612025341a5951718f484487e6aeeeab69b8263116f68dcc90'
           ARBITRUM_POOL: '0xab05003a63d2f34ac7eec4670bca3319f0e3d2f62af5c2b9cbd69d03fd804fd2'
