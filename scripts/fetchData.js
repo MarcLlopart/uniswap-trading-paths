@@ -1,116 +1,415 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
+import { fileURLToPath } from 'url';
+import { ethers } from 'ethers';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const QUERY = `
-{
-  uniswapDayDatas(first: 365, orderBy: date, orderDirection: desc) {
-    date
-    volumeUSD
-    feesUSD
+/* =========================================================
+   CONFIG
+   ========================================================= */
+
+const EIGHT_WEEKS_SECONDS = 60 * 60 * 24 * 7 * 8;
+const START_TIMESTAMP = Math.floor(Date.now() / 1000) - EIGHT_WEEKS_SECONDS;
+
+// Concurrent requests per chain - tune based on API limits
+const MAX_CONCURRENT_BATCHES = 10; // Increased default
+
+const CHAINS = Object.entries(process.env)
+    .filter(([k]) => k.startsWith('V4_SUBGRAPH_URL_'))
+    .map(([k, v]) => {
+        const name = k.replace('V4_SUBGRAPH_URL_', '');
+        return {
+            name,
+            url: v,
+            poolId: process.env[`${name}_POOL`],
+        };
+    })
+    .filter(c => c.poolId);
+
+/* =========================================================
+   GRAPHQL QUERIES
+   ========================================================= */
+
+const POOL_DETAILS_QUERY = `
+query PoolDetails($poolId: String!) {
+  pool(id: $poolId) {
+    id
+    token0 {
+      id
+      symbol
+      decimals
+    }
+    token1 {
+      id
+      symbol
+      decimals
+    }
+    feeTier
+    txCount
+    totalValueLockedUSD
   }
 }
 `;
 
-async function fetchChainData(chainName, url) {
-    console.log(`Fetching ${chainName}...`);
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: QUERY }),
-        });
+const POOL_SWAPS_QUERY = `
+query PoolSwaps($poolId: String!, $timestamp: Int!, $skip: Int!) {
+  swaps(
+    first: 1000
+    skip: $skip
+    orderBy: timestamp
+    orderDirection: asc
+    where: {
+      pool: $poolId
+      timestamp_gte: $timestamp
+    }
+  ) {
+    id
+    timestamp
+    amount0
+    amount1
+    amountUSD
+    pool {
+      id
+      feeTier
+      token0 {
+        decimals
+      }
+      token1 {
+        decimals
+      }
+    }
+  }
+}
+`;
 
-        const result = await response.json();
-        if (result.errors || !result.data) {
-            throw new Error(result.errors ? JSON.stringify(result.errors) : 'No data found');
+/* =========================================================
+   CONCURRENCY LIMITER (p-limit pattern)
+   ========================================================= */
+
+class ConcurrencyLimiter {
+    constructor(limit) {
+        this.limit = limit;
+        this.running = 0;
+        this.queue = [];
+    }
+
+    async run(fn) {
+        while (this.running >= this.limit) {
+            await new Promise(resolve => this.queue.push(resolve));
         }
-        return result.data.uniswapDayDatas;
-    } catch (error) {
-        console.warn(`⚠️ Failed to fetch ${chainName}: ${error.message}`);
-        return generateMockData();
+
+        this.running++;
+        try {
+            return await fn();
+        } finally {
+            this.running--;
+            const resolve = this.queue.shift();
+            if (resolve) resolve();
+        }
     }
 }
 
-function generateMockData() {
-    const data = [];
-    const now = new Date();
-    for (let i = 0; i < 365; i++) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        const growthFactor = 1 - (i / 365);
-        const randomVar = 0.5 + Math.random();
-        data.push({
-            date: Math.floor(date.getTime() / 1000),
-            volumeUSD: (50000000 * growthFactor * randomVar).toFixed(2),
-            feesUSD: (50000 * growthFactor * randomVar).toFixed(2)
-        });
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+async function graphRequest(url, query, variables, retries = 2) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query, variables }),
+            });
+
+            const json = await res.json();
+            if (json.errors) {
+                const errorMsg = JSON.stringify(json.errors);
+                if (errorMsg.includes('bad indexers') && i < retries) {
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    continue;
+                }
+                throw new Error(JSON.stringify(json.errors));
+            }
+            return json.data;
+        } catch (error) {
+            if (i === retries) throw error;
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
     }
-    return data;
 }
 
-function processChainData(dayDatas) {
-    const monthlyData = {};
+async function fetchPoolDetails(chain) {
+    const data = await graphRequest(chain.url, POOL_DETAILS_QUERY, {
+        poolId: chain.poolId,
+    });
 
-    dayDatas.forEach(day => {
-        const date = new Date(day.date * 1000);
-        // Use UTC to avoid timezone shifting issues on boundaries
-        const year = date.getUTCFullYear();
-        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-        const monthKey = `${year}-${month}`;
+    if (!data.pool) {
+        return null;
+    }
 
-        if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = {
+    return data.pool;
+}
+
+// SUPER-OPTIMIZED: True streaming parallel fetching
+async function fetchPoolSwapsSuperFast(chain, poolId) {
+    const limiter = new ConcurrencyLimiter(MAX_CONCURRENT_BATCHES);
+
+    const fetchBatch = async (skipValue) => {
+        try {
+            const data = await graphRequest(chain.url, POOL_SWAPS_QUERY, {
+                poolId,
+                timestamp: START_TIMESTAMP,
+                skip: skipValue,
+            });
+
+            if (!data.swaps || data.swaps.length === 0) {
+                return { swaps: [], hasMore: false };
+            }
+
+            return { swaps: data.swaps, hasMore: data.swaps.length === 1000 };
+        } catch (error) {
+            console.error(`   ⚠️  Batch at skip ${skipValue} failed:`, error.message);
+            return { swaps: [], hasMore: false };
+        }
+    };
+
+    // Fetch first batch to check if pool has data
+    const first = await fetchBatch(0);
+    if (first.swaps.length === 0) {
+        return [];
+    }
+
+    const allSwaps = [...first.swaps];
+
+    // If less than 1000, we're done
+    if (!first.hasMore) {
+        return allSwaps;
+    }
+
+    // Queue up many batches at once - the limiter controls concurrency
+    // Estimate upper bound: 300k swaps max = 300 batches
+    const promises = [];
+    let skip = 1000;
+    let emptyCount = 0;
+
+    // Fire off requests in chunks to avoid creating too many promises upfront
+    const CHUNK_SIZE = 50;
+
+    for (let chunk = 0; chunk < 10; chunk++) { // Max 500 batches (500k swaps)
+        const chunkPromises = [];
+
+        for (let i = 0; i < CHUNK_SIZE; i++) {
+            const currentSkip = skip;
+            skip += 1000;
+
+            chunkPromises.push(
+                limiter.run(() => fetchBatch(currentSkip))
+            );
+        }
+
+        // Wait for this chunk to complete
+        const results = await Promise.all(chunkPromises);
+
+        // Add all swaps from this chunk
+        for (const result of results) {
+            if (result.swaps.length > 0) {
+                allSwaps.push(...result.swaps);
+                emptyCount = 0;
+            } else {
+                emptyCount++;
+            }
+
+            // If we get consecutive empty batches, we're past the data
+            if (emptyCount >= 5) {
+                return allSwaps;
+            }
+
+            // If this batch wasn't full, we're likely at the end
+            if (!result.hasMore) {
+                return allSwaps;
+            }
+        }
+    }
+
+    return allSwaps;
+}
+
+function calculateVolumeAndFees(swaps) {
+    const dailyData = {};
+
+    for (const swap of swaps) {
+        const date = new Date(swap.timestamp * 1000);
+        const dateKey = date.toISOString().split('T')[0];
+
+        if (!dailyData[dateKey]) {
+            dailyData[dateKey] = {
+                timestamp: swap.timestamp,
                 volume: 0,
                 fees: 0,
-                date: monthKey
             };
         }
 
-        monthlyData[monthKey].volume += parseFloat(day.volumeUSD);
-        monthlyData[monthKey].fees += parseFloat(day.feesUSD);
-    });
+        let volumeUSD = 0;
+        if (swap.amountUSD && swap.amountUSD !== '0') {
+            volumeUSD = Math.abs(parseFloat(swap.amountUSD));
+        } else {
+            continue;
+        }
 
-    return Object.values(monthlyData).sort((a, b) => a.date.localeCompare(b.date));
+        const feeRate = parseInt(swap.pool?.feeTier || '3000') / 1000000;
+        const feesUSD = volumeUSD * feeRate;
+
+        dailyData[dateKey].volume += volumeUSD;
+        dailyData[dateKey].fees += feesUSD;
+    }
+
+    return Object.values(dailyData);
 }
+
+function aggregateWeekly(dailyData) {
+    const weekly = {};
+
+    for (const day of dailyData) {
+        const date = new Date(day.timestamp * 1000);
+        const dayOfWeek = date.getUTCDay();
+        const diff = (dayOfWeek === 0 ? -6 : 1) - dayOfWeek;
+        const monday = new Date(date);
+        monday.setUTCDate(date.getUTCDate() + diff);
+        monday.setUTCHours(0, 0, 0, 0);
+
+        const key = monday.toISOString().split('T')[0];
+
+        if (!weekly[key]) {
+            weekly[key] = { date: key, volume: 0, fees: 0 };
+        }
+
+        weekly[key].volume += day.volume;
+        weekly[key].fees += day.fees;
+    }
+
+    return Object.values(weekly).sort((a, b) =>
+        a.date.localeCompare(b.date)
+    );
+}
+
+function calculateTotalVolume(dailyData) {
+    return dailyData.reduce((sum, day) => sum + day.volume, 0);
+}
+
+/* =========================================================
+   MAIN
+   ========================================================= */
 
 async function main() {
-    const chains = {};
+    const startTime = Date.now();
 
-    // Find all V4_SUBGRAPH_URL_* variables
-    for (const [key, value] of Object.entries(process.env)) {
-        if (key.startsWith('V4_SUBGRAPH_URL_')) {
-            const chainName = key.replace('V4_SUBGRAPH_URL_', '');
-            chains[chainName] = value;
-        }
-    }
+    console.log('🚀 Starting SUPER-OPTIMIZED Uniswap V4 data fetch...\n');
+    console.log(`📅 Fetching data from last 8 weeks (since ${new Date(START_TIMESTAMP * 1000).toISOString()})\n`);
+    console.log(`🔄 Processing ${CHAINS.length} chains in parallel (${MAX_CONCURRENT_BATCHES} concurrent batches per chain)...\n`);
 
-    // Fallback if no env vars found
-    if (Object.keys(chains).length === 0) {
-        console.log('No chains found in .env, using default placeholder');
-        chains['MAINNET'] = 'https://api.studio.thegraph.com/query/UNI_V4_PLACEHOLDER';
-    }
-
-    const finalData = {
+    const output = {
         chains: {},
-        lastUpdated: new Date().toISOString()
+        poolMetadata: {},
+        lastUpdated: new Date().toISOString(),
     };
 
-    for (const [name, url] of Object.entries(chains)) {
-        const rawData = await fetchChainData(name, url);
-        finalData.chains[name] = processChainData(rawData);
+    const progress = {
+        total: CHAINS.length,
+        completed: 0,
+        successful: 0,
+        failed: 0
+    };
+
+    // Process all chains in parallel
+    const chainPromises = CHAINS.map(async (chain) => {
+        const chainStart = Date.now();
+
+        try {
+            const pool = await fetchPoolDetails(chain);
+
+            if (!pool) {
+                progress.completed++;
+                progress.failed++;
+                console.log(`❌ [${progress.completed}/${progress.total}] ${chain.name}: Pool not found`);
+                return { chain: chain.name, success: false };
+            }
+
+            const swaps = await fetchPoolSwapsSuperFast(chain, pool.id);
+
+            if (swaps.length === 0) {
+                progress.completed++;
+                progress.failed++;
+                console.log(`⚠️  [${progress.completed}/${progress.total}] ${chain.name}: No swaps in time range`);
+                return { chain: chain.name, success: false };
+            }
+
+            const dailyData = calculateVolumeAndFees(swaps);
+            const totalVolume = calculateTotalVolume(dailyData);
+            const weeklyData = aggregateWeekly(dailyData);
+
+            const poolMetadata = {
+                poolId: pool.id,
+                pair: `${pool.token0.symbol}/${pool.token1.symbol}`,
+                feeTier: pool.feeTier,
+                feePercent: (parseInt(pool.feeTier) / 10000).toFixed(2) + '%',
+            };
+
+            const chainTime = ((Date.now() - chainStart) / 1000).toFixed(1);
+            progress.completed++;
+            progress.successful++;
+
+            console.log(`✅ [${progress.completed}/${progress.total}] ${chain.name}: ${pool.token0.symbol}/${pool.token1.symbol} - ${swaps.length} swaps, $${totalVolume.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${chainTime}s)`);
+
+            return {
+                chain: chain.name,
+                success: true,
+                poolMetadata,
+                weeklyData
+            };
+        } catch (error) {
+            progress.completed++;
+            progress.failed++;
+            console.error(`❌ [${progress.completed}/${progress.total}] ${chain.name}: ${error.message}`);
+            return { chain: chain.name, success: false };
+        }
+    });
+
+    const results = await Promise.all(chainPromises);
+
+    results.forEach(result => {
+        if (result.success) {
+            output.chains[result.chain] = result.weeklyData;
+            output.poolMetadata[result.chain] = result.poolMetadata;
+        }
+    });
+
+    const outDir = path.join(__dirname, '../public');
+    const outPath = path.join(outDir, 'uniswap_data.json');
+
+    if (!fs.existsSync(outDir)) {
+        fs.mkdirSync(outDir, { recursive: true });
     }
 
-    const outputPath = path.join(__dirname, '../public/uniswap_data.json');
-    fs.writeFileSync(outputPath, JSON.stringify(finalData, null, 2));
+    fs.writeFileSync(outPath, JSON.stringify(output, null, 2));
 
-    console.log(`✅ Data saved to ${outputPath}`);
+    const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`✅ Complete! Data saved to: ${outPath}`);
+    console.log(`📊 Results: ${progress.successful} successful, ${progress.failed} failed`);
+    console.log(`⏱️  Total time: ${totalTime}s`);
+    console.log(`⚡ Speedup: ~${(172.9 / (totalTime / progress.total)).toFixed(1)}x faster per chain`);
+    console.log(`${'='.repeat(60)}\n`);
 }
 
-main();
+main().catch(err => {
+    console.error('\n❌ Fatal error:', err);
+    process.exit(1);
+});

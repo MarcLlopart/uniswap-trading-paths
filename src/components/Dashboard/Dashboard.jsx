@@ -7,18 +7,18 @@ const formatCurrency = (value) => {
     if (value >= 1e9) return `$${(value / 1e9).toFixed(1)}B`;
     if (value >= 1e6) return `$${(value / 1e6).toFixed(1)}M`;
     if (value >= 1e3) return `$${(value / 1e3).toFixed(1)}K`;
-    return `$${value.toFixed(0)}`;
+    return `$${value.toFixed(1)}`;
 };
 
 const formatFullCurrency = (value) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 };
 
 const Dashboard = () => {
     const [rawData, setRawData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [selectedChain, setSelectedChain] = useState('ALL');
-    const [activeTab, setActiveTab] = useState('Volume'); // 'Volume' or 'Fees'
+    const [activeTab, setActiveTab] = useState('Volume');
     const [isDarkMode, setIsDarkMode] = useState(true);
 
     useEffect(() => {
@@ -65,23 +65,23 @@ const Dashboard = () => {
 
         const history = Object.values(monthlyAgg).sort((a, b) => a.date.localeCompare(b.date));
 
-        // Calculate Deltas
-        const currentMonth = history[history.length - 1];
-        const previousMonth = history[history.length - 2];
+        // Calculate Deltas (current week vs previous week)
+        const currentWeek = history[history.length - 1];
+        const previousWeek = history[history.length - 2];
 
         let volumeDelta = 0;
         let feesDelta = 0;
 
-        if (currentMonth && previousMonth && previousMonth.volume > 0) {
-            volumeDelta = ((currentMonth.volume - previousMonth.volume) / previousMonth.volume) * 100;
+        if (currentWeek && previousWeek && previousWeek.volume > 0) {
+            volumeDelta = ((currentWeek.volume - previousWeek.volume) / previousWeek.volume) * 100;
         }
-        if (currentMonth && previousMonth && previousMonth.fees > 0) {
-            feesDelta = ((currentMonth.fees - previousMonth.fees) / previousMonth.fees) * 100;
+        if (currentWeek && previousWeek && previousWeek.fees > 0) {
+            feesDelta = ((currentWeek.fees - previousWeek.fees) / previousWeek.fees) * 100;
         }
 
         return {
-            currentVolume: currentMonth ? currentMonth.volume : 0,
-            currentFees: currentMonth ? currentMonth.fees : 0,
+            currentVolume: currentWeek ? currentWeek.volume : 0,
+            currentFees: currentWeek ? currentWeek.fees : 0,
             volumeDelta,
             feesDelta,
             history
@@ -93,14 +93,13 @@ const Dashboard = () => {
 
     const { currentVolume, currentFees, volumeDelta, feesDelta, history } = processedData || {};
 
-    // Chart Data Preparation
-    const chartData = history ? history.slice(-12).map(item => {
-        const [year, month] = item.date.split('-');
-        const date = new Date(parseInt(year), parseInt(month) - 1, 15);
+    // Chart Data Preparation - Show last 8 weeks
+    const chartData = history ? history.slice(-8).map(item => {
+        const date = new Date(item.date);
         return {
-            name: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-            volume: item.volume,  // Keep original values
-            fees: item.fees,      // Keep original values
+            name: `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+            volume: item.volume,
+            fees: item.fees,
             originalDate: item.date
         };
     }) : [];
@@ -137,11 +136,26 @@ const Dashboard = () => {
                         </button>
                     ))}
                 </div>
+
+                {/* Pool Info Display */}
+                {selectedChain !== 'ALL' && rawData.poolMetadata && rawData.poolMetadata[selectedChain] && (
+                    <div className="pool-info">
+                        <span className="pool-label">Pool:</span>
+                        <span className="pool-pair">{rawData.poolMetadata[selectedChain].pair}</span>
+                        <span className="pool-fee">Fee: {rawData.poolMetadata[selectedChain].feePercent}</span>
+                    </div>
+                )}
+                {selectedChain === 'ALL' && (
+                    <div className="pool-info">
+                        <span className="pool-label">Viewing:</span>
+                        <span className="pool-pair">All Chains Aggregated</span>
+                    </div>
+                )}
             </header>
 
             <div className="kpi-grid">
                 <Card
-                    title="Monthly Volume"
+                    title="Weekly Volume"
                     value={currentVolume}
                     delta={volumeDelta}
                     icon={<Activity size={24} />}
@@ -149,7 +163,7 @@ const Dashboard = () => {
                     onClick={() => setActiveTab('Volume')}
                 />
                 <Card
-                    title="Monthly Fees"
+                    title="Weekly Fees"
                     value={currentFees}
                     delta={feesDelta}
                     icon={<DollarSign size={24} />}
@@ -209,7 +223,7 @@ const Dashboard = () => {
                                     value: activeTab === 'Volume' ? "Volume ($)" : "Fees ($)",
                                     position: 'insideLeft',
                                     angle: -90,
-                                    offset: -10,
+                                    offset: -15,
                                     style: { fill: 'var(--text-primary)', textAnchor: 'middle' }
                                 }}
                             />
@@ -269,7 +283,7 @@ const Card = ({ title, value, delta, icon, isActive, onClick }) => {
                 <div className={`card-delta ${isPositive ? 'positive' : 'negative'}`}>
                     {isPositive ? <ArrowUpRight size={16} /> : <ArrowDownRight size={16} />}
                     <span>{Math.abs(delta).toFixed(2)}%</span>
-                    <span className="delta-label">vs last month</span>
+                    <span>vs last week</span>
                 </div>
             </div>
         </div>
