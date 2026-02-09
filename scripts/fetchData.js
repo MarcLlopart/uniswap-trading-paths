@@ -3,22 +3,15 @@ import path from 'path';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 import { fileURLToPath } from 'url';
-import { ethers } from 'ethers';
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-/* =========================================================
-   CONFIG
-   ========================================================= */
-
 const EIGHT_WEEKS_SECONDS = 60 * 60 * 24 * 7 * 8;
 const START_TIMESTAMP = Math.floor(Date.now() / 1000) - EIGHT_WEEKS_SECONDS;
-
-// Concurrent requests per chain - tune based on API limits
-const MAX_CONCURRENT_BATCHES = 10; // Increased default
+const MAX_CONCURRENT_BATCHES = 10;
 
 const CHAINS = Object.entries(process.env)
     .filter(([k]) => k.startsWith('V4_SUBGRAPH_URL_'))
@@ -31,10 +24,6 @@ const CHAINS = Object.entries(process.env)
         };
     })
     .filter(c => c.poolId);
-
-/* =========================================================
-   GRAPHQL QUERIES
-   ========================================================= */
 
 const POOL_DETAILS_QUERY = `
 query PoolDetails($poolId: String!) {
@@ -88,10 +77,6 @@ query PoolSwaps($poolId: String!, $timestamp: Int!, $skip: Int!) {
 }
 `;
 
-/* =========================================================
-   CONCURRENCY LIMITER (p-limit pattern)
-   ========================================================= */
-
 class ConcurrencyLimiter {
     constructor(limit) {
         this.limit = limit;
@@ -114,10 +99,6 @@ class ConcurrencyLimiter {
         }
     }
 }
-
-/* =========================================================
-   HELPERS
-   ========================================================= */
 
 async function graphRequest(url, query, variables, retries = 2) {
     for (let i = 0; i <= retries; i++) {
@@ -157,7 +138,6 @@ async function fetchPoolDetails(chain) {
     return data.pool;
 }
 
-// SUPER-OPTIMIZED: True streaming parallel fetching
 async function fetchPoolSwapsSuperFast(chain, poolId) {
     const limiter = new ConcurrencyLimiter(MAX_CONCURRENT_BATCHES);
 
@@ -180,7 +160,6 @@ async function fetchPoolSwapsSuperFast(chain, poolId) {
         }
     };
 
-    // Fetch first batch to check if pool has data
     const first = await fetchBatch(0);
     if (first.swaps.length === 0) {
         return [];
@@ -188,21 +167,16 @@ async function fetchPoolSwapsSuperFast(chain, poolId) {
 
     const allSwaps = [...first.swaps];
 
-    // If less than 1000, we're done
     if (!first.hasMore) {
         return allSwaps;
     }
 
-    // Queue up many batches at once - the limiter controls concurrency
-    // Estimate upper bound: 300k swaps max = 300 batches
-    const promises = [];
     let skip = 1000;
     let emptyCount = 0;
 
-    // Fire off requests in chunks to avoid creating too many promises upfront
     const CHUNK_SIZE = 50;
 
-    for (let chunk = 0; chunk < 10; chunk++) { // Max 500 batches (500k swaps)
+    for (let chunk = 0; chunk < 10; chunk++) {
         const chunkPromises = [];
 
         for (let i = 0; i < CHUNK_SIZE; i++) {
@@ -214,10 +188,8 @@ async function fetchPoolSwapsSuperFast(chain, poolId) {
             );
         }
 
-        // Wait for this chunk to complete
         const results = await Promise.all(chunkPromises);
 
-        // Add all swaps from this chunk
         for (const result of results) {
             if (result.swaps.length > 0) {
                 allSwaps.push(...result.swaps);
@@ -226,12 +198,10 @@ async function fetchPoolSwapsSuperFast(chain, poolId) {
                 emptyCount++;
             }
 
-            // If we get consecutive empty batches, we're past the data
             if (emptyCount >= 5) {
                 return allSwaps;
             }
 
-            // If this batch wasn't full, we're likely at the end
             if (!result.hasMore) {
                 return allSwaps;
             }
@@ -303,16 +273,12 @@ function calculateTotalVolume(dailyData) {
     return dailyData.reduce((sum, day) => sum + day.volume, 0);
 }
 
-/* =========================================================
-   MAIN
-   ========================================================= */
-
 async function main() {
     const startTime = Date.now();
 
-    console.log('🚀 Starting SUPER-OPTIMIZED Uniswap V4 data fetch...\n');
-    console.log(`📅 Fetching data from last 8 weeks (since ${new Date(START_TIMESTAMP * 1000).toISOString()})\n`);
-    console.log(`🔄 Processing ${CHAINS.length} chains in parallel (${MAX_CONCURRENT_BATCHES} concurrent batches per chain)...\n`);
+    console.log('Starting SUPER-OPTIMIZED Uniswap V4 data fetch...\n');
+    console.log(`Fetching data from last 8 weeks (since ${new Date(START_TIMESTAMP * 1000).toISOString()})\n`);
+    console.log(`Processing ${CHAINS.length} chains in parallel (${MAX_CONCURRENT_BATCHES} concurrent batches per chain)...\n`);
 
     const output = {
         chains: {},
@@ -337,7 +303,7 @@ async function main() {
             if (!pool) {
                 progress.completed++;
                 progress.failed++;
-                console.log(`❌ [${progress.completed}/${progress.total}] ${chain.name}: Pool not found`);
+                console.log(`[${progress.completed}/${progress.total}] ${chain.name}: Pool not found`);
                 return { chain: chain.name, success: false };
             }
 
@@ -346,7 +312,7 @@ async function main() {
             if (swaps.length === 0) {
                 progress.completed++;
                 progress.failed++;
-                console.log(`⚠️  [${progress.completed}/${progress.total}] ${chain.name}: No swaps in time range`);
+                console.log(`[${progress.completed}/${progress.total}] ${chain.name}: No swaps in time range`);
                 return { chain: chain.name, success: false };
             }
 
@@ -358,7 +324,7 @@ async function main() {
                 poolId: pool.id,
                 pair: `${pool.token0.symbol}/${pool.token1.symbol}`,
                 feeTier: pool.feeTier,
-                feePercent: (parseInt(pool.feeTier) / 10000).toFixed(2) + '%',
+                feePercent: (parseInt(pool.feeTier) / 10000).toFixed(6) + '%',
             };
 
             const chainTime = ((Date.now() - chainStart) / 1000).toFixed(1);
@@ -402,14 +368,12 @@ async function main() {
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`✅ Complete! Data saved to: ${outPath}`);
-    console.log(`📊 Results: ${progress.successful} successful, ${progress.failed} failed`);
-    console.log(`⏱️  Total time: ${totalTime}s`);
-    console.log(`⚡ Speedup: ~${(172.9 / (totalTime / progress.total)).toFixed(1)}x faster per chain`);
+    console.log(`Complete! Data saved to: ${outPath}`);
+    console.log(`Results: ${progress.successful} successful, ${progress.failed} failed`);
     console.log(`${'='.repeat(60)}\n`);
 }
 
 main().catch(err => {
-    console.error('\n❌ Fatal error:', err);
+    console.error('\nFatal error:', err);
     process.exit(1);
 });

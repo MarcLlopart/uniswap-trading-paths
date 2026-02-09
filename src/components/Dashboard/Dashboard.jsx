@@ -13,6 +13,25 @@ const formatCurrency = (value) => {
 const formatFullCurrency = (value) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
 };
+const formatFeeSmart = (feeStr) => {
+    if (!feeStr) return '';
+    // Remove the % and convert to number
+    const numericValue = parseFloat(feeStr.replace('%', ''));
+    // Convert to string, remove trailing zeros but keep at least one decimal
+    let formatted = numericValue.toString();
+
+    // Ensure at least one decimal place
+    if (!formatted.includes('.')) {
+        formatted += '.0';
+    } else {
+        // Remove trailing zeros after decimal
+        formatted = formatted.replace(/(\.\d*?[1-9])0+$/, '$1');
+        // If it ends with ".", add 0
+        if (formatted.endsWith('.')) formatted += '0';
+    }
+
+    return `${formatted}%`;
+};
 
 const Dashboard = () => {
     const [rawData, setRawData] = useState(null);
@@ -142,7 +161,9 @@ const Dashboard = () => {
                     <div className="pool-info">
                         <span className="pool-label">Pool:</span>
                         <span className="pool-pair">{rawData.poolMetadata[selectedChain].pair}</span>
-                        <span className="pool-fee">Fee: {rawData.poolMetadata[selectedChain].feePercent}</span>
+                        <span className="pool-fee">
+                            Fee: {formatFeeSmart(rawData.poolMetadata[selectedChain].feePercent)}
+                        </span>
                     </div>
                 )}
                 {selectedChain === 'ALL' && (
