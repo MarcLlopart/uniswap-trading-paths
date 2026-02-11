@@ -542,6 +542,10 @@ View a decoded swap on Uniscan: [0x1cf73b22...](https://uniscan.xyz/tx/0x1cf73b2
 ### Decoding Query (Trino SQL)
 
 This query extracts swap details from Universal Router transactions on Unichain:
+Queries used in Dune:
+- Single swap: [scripts/single_swap.sql](https://github.com/MarcLlopart/uniswap-trading-paths/blob/main/scripts/single_swap.sql)
+- All swaps: [scripts/all_execute_swaps.sql](https://github.com/MarcLlopart/uniswap-trading-paths/blob/main/scripts/all_execute_swaps.sql)
+
 ```sql
 WITH decoded_data AS (
   SELECT
