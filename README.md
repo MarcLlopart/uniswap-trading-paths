@@ -12,6 +12,7 @@ The document below provides a clear, comprehensive breakdown of how trades execu
 - [Technical Deep Dive: V3 Direct Pool](#v3-direct-pool-step-by-step)
 - [Technical Deep Dive: V4 Execution Paths](#v4-execution-paths)
 - [Volume & Fee Extraction](#volume--fee-extraction)
+- [Decoding Universal Router Transactions - Using Dune](#decoding-universal-router-transactions---using-dune)
 - [Dashboard Walkthrough](#dashboard-walkthrough)
 
 ---
@@ -517,6 +518,153 @@ feeAmount = volume * effectiveFee / 1_000_000;
 - **Failed transactions** don't emit events (V3/V4)
 - **Token decimal normalization** is required for USD calculations
 - **V4 hooks** can modify fees dynamically — must check actual fee used
+
+---
+
+## Decoding Universal Router Transactions - Using Dune
+
+The Universal Router's `execute()` function uses a compact command-based encoding that requires careful decoding to extract swap details. This section provides a Trino SQL query that decodes these transactions and extracts key swap parameters.
+
+### Overview
+
+When users swap via the Universal Router, the transaction data follows this structure:
+- **Method ID**: `0x3593564c` (first 4 bytes)
+- **Commands**: Byte array encoding operation types
+- **Inputs**: ABI-encoded parameters for each command
+- **Deadline**: Unix timestamp for transaction expiry
+
+The swap parameters (tokens, amounts, fee tier) are encoded as 32-byte words in the `inputs` array.
+
+### Example Transaction
+
+View a decoded swap on Uniscan: [0x1cf73b22...](https://uniscan.xyz/tx/0x1cf73b2206732f07d76b71acb8f4109d2ee6823da75bf70895055f4a1bfeb6cf)
+
+### Decoding Query (Trino SQL)
+
+This query extracts swap details from Universal Router transactions on Unichain:
+```sql
+WITH decoded_data AS (
+  SELECT
+    -- Extract deadline
+    TRY_CAST(
+      from_big_endian_64(bytearray_substring(data, 5 + 32*2 + 24, 8))
+      AS BIGINT
+    ) AS deadline_timestamp,
+    
+    -- Extract token addresses
+    bytearray_substring(data, 5 + 32*18 + 12, 20) AS token_from,
+    bytearray_substring(data, 5 + 32*19 + 12, 20) AS token_to,
+    
+    -- Extract fee tier 
+    TRY_CAST(
+      from_big_endian_32(bytearray_substring(data, 5 + 32*20 + 28, 4))
+      AS INTEGER
+    ) AS fee_tier_raw,
+    
+    -- Extract amounts
+    TRY_CAST(
+      from_big_endian_64(bytearray_substring(data, 5 + 32*24 + 24, 8))
+      AS DECIMAL(38,0)
+    ) AS amount_in_raw,
+    
+    TRY_CAST(
+      from_big_endian_64(bytearray_substring(data, 5 + 32*25 + 24, 8))
+      AS DECIMAL(38,0)
+    ) AS amount_out_min_raw,
+    hash,
+    block_time
+  FROM unichain.transactions
+  WHERE hash = 0x1cf73b2206732f07d76b71acb8f4109d2ee6823da75bf70895055f4a1bfeb6cf
+),
+
+token_info AS (
+  SELECT
+    d.*,
+    t_from.symbol AS token_from_symbol,
+    t_from.decimals AS token_from_decimals,
+    t_to.symbol AS token_to_symbol,
+    t_to.decimals AS token_to_decimals
+  FROM decoded_data d
+  LEFT JOIN tokens.erc20 t_from
+    ON t_from.blockchain = 'unichain'
+    AND t_from.contract_address = d.token_from
+  LEFT JOIN tokens.erc20 t_to
+    ON t_to.blockchain = 'unichain'
+    AND t_to.contract_address = d.token_to
+)
+
+SELECT
+  hash,
+  block_time,
+  from_unixtime(deadline_timestamp) AS deadline,
+  token_from AS token_from_address,
+  token_from_symbol,
+  token_from_decimals,
+  CAST(amount_in_raw AS DOUBLE) / POW(10, COALESCE(token_from_decimals, 18)) AS amount_in,
+  token_to AS token_to_address,
+  token_to_symbol,
+  token_to_decimals,
+  CAST(amount_out_min_raw AS DOUBLE) / POW(10, COALESCE(token_to_decimals, 18)) AS amount_out_min,
+  fee_tier_raw,
+  CAST(fee_tier_raw AS DOUBLE) / 1000000 AS fee_tier_decimal,  
+  COALESCE(token_from_symbol, 'UNKNOWN') || ' → ' || COALESCE(token_to_symbol, 'UNKNOWN') AS swap_pair,
+  amount_in_raw,
+  amount_out_min_raw
+FROM token_info;
+```
+
+### Byte Position Breakdown
+
+The Universal Router's calldata uses this structure:
+
+| Position | Bytes | Content | Extraction Formula |
+|----------|-------|---------|-------------------|
+| 1-4 | 4 | Method ID | `bytearray_substring(data, 1, 4)` |
+| 5+ | Variable | ABI-encoded params | See word positions below |
+
+**32-byte Word Positions (after method ID):**
+
+| Word | Offset | Content | Notes |
+|------|--------|---------|-------|
+| [2] | 5 + 32*2 | Deadline timestamp | Last 8 bytes |
+| [18] | 5 + 32*18 | Token FROM address | Last 20 bytes |
+| [19] | 5 + 32*19 | Token TO address | Last 20 bytes |
+| [20] | 5 + 32*20 | Fee tier | Last 4 bytes, ÷ 1,000,000 |
+| [24] | 5 + 32*24 | Amount in | Last 8 bytes |
+| [25] | 5 + 32*25 | Min amount out | Last 8 bytes |
+
+### Key Decoding Steps
+
+1. **Extract 32-byte words**: Use `bytearray_substring(data, offset, 32)`
+2. **Get addresses**: Take last 20 bytes of word (skip first 12 zero-padding bytes)
+3. **Get amounts**: Take last 8 bytes and convert with `from_big_endian_64()`
+4. **Apply decimals**: Divide raw amounts by `10^decimals` from token metadata
+5. **Calculate fee**: Divide `fee_tier_raw` by 1,000,000 to get decimal fee rate
+
+### Fee Tier Encoding
+
+V4 fee tiers are encoded differently than V3:
+```
+Raw Value → Actual Fee
+500       → 0.0005 (0.05%)
+3000      → 0.003 (0.30%)
+10000     → 0.01 (1.00%)
+```
+
+**Formula**: `actual_fee = raw_value / 1,000,000`
+
+### Analytics Use Cases
+
+This decoding enables:
+- **Volume tracking** per token pair and fee tier
+- **Slippage analysis** by comparing `amount_in` vs `amount_out_min`
+- **Deadline patterns** to understand user time preferences
+- **Fee tier preferences** across different trading pairs
+- **Router adoption metrics** for Universal Router vs direct pool swaps
+
+---
+
+
 
 ### Dashboard Walkthrough
 In order to run the dashboard you will need to get your API key from The Graph and add it to the .env file. The used subgraphs are on the .env-example file, you just need to copy the example file to .env and replace the API key with your own.
